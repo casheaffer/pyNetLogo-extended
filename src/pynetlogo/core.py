@@ -195,7 +195,23 @@ class NetLogoLink:
             jars.append(os.path.join(PYNETLOGO_HOME, "java", "netlogolink.jar"))
 
             try:
-                jpype.startJVM(*jvmargs, jvmpath=jvm_path, classpath=jars)
+                #jpype.startJVM(*jvmargs, jvmpath=jvm_path, classpath=jars)
+
+                classpath_sep = ";" if os.name == "nt" else ":"
+                classpath = classpath_sep.join(jars)
+
+                # Build JVM args
+                jvm_args = list(jvmargs) if jvmargs else []
+
+                # Add Java debugging agent
+                jvm_args += [
+                    f"-Djava.class.path={classpath}",
+                    "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005"
+                ]
+
+                # Start the JVM
+                jpype.startJVM(jvmpath=jvm_path, *jvm_args)
+
             except RuntimeError as e:
                 raise e
 
@@ -298,6 +314,17 @@ class NetLogoLink:
         except jpype.JException as ex:
             print(ex.stacktrace())
             raise NetLogoException(str(ex))
+        
+    def get_breed_variable_types(self, breed_name: str) -> dict:
+        """
+        Calls the custom Java method to get variable types for a given breed.
+        
+        :param breed_name: The breed name (e.g., "MOOSES")
+        :return: A Python dict {var_name: type_string}
+        """
+        java_result = self.link.getBreedVariableTypes(breed_name.upper())
+        return {str(k): str(v) for k, v in java_result.entrySet()}
+
 
     def report_while(self, netlogo_reporter, condition, command="go", max_seconds=10):
         """Return values from a NetLogo reporter while a condition is true
@@ -653,6 +680,20 @@ class NetLogoLink:
 
         return converted_results
 
+
+    def set_breed_variable(self, breed: str, var: str, value):
+        self.link.setBreedVariable(breed.upper(), var, value)
+
+    def set_breed_variable_by_who(self, breed: str, var: str, who_list: list[int], value_list: list):
+        if len(who_list) != len(value_list):
+            raise ValueError("Length of who_list must match value_list")
+
+        java_who = JArray(JInt)(who_list)
+
+        # Guess element type: allow for Object[] to support mixed types
+        java_values = JArray(JObject)(value_list)
+
+        self.link.setBreedVariableByWho(breed.upper(), var, java_who, java_values)
 
 def type_convert(results):
     """Helper function for converting from Java datatypes to

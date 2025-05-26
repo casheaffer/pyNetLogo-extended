@@ -7,8 +7,21 @@ package netLogoLink;
 
 
 import org.nlogo.headless.HeadlessWorkspace;
+import org.nlogo.workspace.AbstractWorkspace;
+
+import scala.Option;
+import scala.collection.Seq;
+import scala.collection.JavaConverters;
+
+import org.nlogo.core.Breed;
 import org.nlogo.core.CompilerException;
+import org.nlogo.core.Program;
+import org.nlogo.api.Agent;
+import org.nlogo.api.AgentException;
+import org.nlogo.api.AgentSet;
 import org.nlogo.api.LogoException;
+import org.nlogo.api.Turtle;
+import org.nlogo.api.World;
 import org.nlogo.app.App;
 import java.awt.EventQueue;
 import java.awt.Frame;
@@ -16,6 +29,11 @@ import java.awt.Frame;
 import javax.swing.JOptionPane;
 
 import java.lang.Thread;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 
 public class NetLogoLink {
@@ -271,6 +289,179 @@ public class NetLogoLink {
 	reportWhile
 	*/
 	
+
+	/**
+	 * Returns a map of variable names to their inferred types for a given breed of turtles.
+	 * The result only includes turtles-own and breed-own variables.
+	 */
+	public Map<String, String> getBreedVariableTypes(String breedName) {
+		Map<String, String> varNameToType = new LinkedHashMap<>();
+
+		AgentSet breedSet = getBreedAgentSet(breedName);
+		if (breedSet == null || breedSet.count() == 0) {
+			System.out.println("No turtles found for breed: " + breedName);
+			return varNameToType;
+		}
+
+		// Use the first turtle in the agent set as the type reference
+		Turtle sampleTurtle = (Turtle) breedSet.agents().iterator().next();
+
+		World world = getWorld();
+		Program program = world.program();
+
+		// turtles-own variables
+		Seq<String> turtlesOwn = program.turtlesOwn();
+		List<String> turtlesOwnList = JavaConverters.seqAsJavaList(turtlesOwn);
+
+		// breed-own variables
+		List<String> breedOwn = new ArrayList<>();
+		Option<Breed> breedOpt = program.breeds().get(breedName.toUpperCase());
+		if (breedOpt.isDefined()) {
+			Breed breed = breedOpt.get();
+			breedOwn = JavaConverters.seqAsJavaList(breed.owns());
+		}
+
+		int numTurtlesOwn = turtlesOwn.size();
+
+		// turtles-own vars
+		for (int i = 0; i < numTurtlesOwn; i++) {
+			Object val = sampleTurtle.getVariable(i);
+			String typeName = (val == null) ? "null" : val.getClass().getSimpleName();
+			varNameToType.put(turtlesOwnList.get(i), typeName);
+		}
+
+		// breed-own vars
+		for (int j = 0; j < breedOwn.size(); j++) {
+			Object val = sampleTurtle.getVariable(numTurtlesOwn + j);
+			String typeName = (val == null) ? "null" : val.getClass().getSimpleName();
+			varNameToType.put(breedOwn.get(j), typeName);
+		}
+
+		return varNameToType;
+	}
+
+	private AgentSet getBreedAgentSet(String breedName) {
+		World world = getWorld();
+		return world.getBreed(breedName.toUpperCase());
+	}
+
+
+
+
+	public void setBreedVariableByWho(String breedName, String varName, int[] whoList, Object[] values) throws LogoException, AgentException {
+		if (whoList.length != values.length) {
+			throw new IllegalArgumentException("whoList and values must have the same length");
+		}
+		String upperVarName = varName.toUpperCase();
+
+		AgentSet breedSet = getBreedAgentSet(breedName);
+		if (breedSet == null || breedSet.count() == 0) {
+			System.out.println("No turtles found for breed: " + breedName);
+			return;
+		}
+	
+		Turtle sample = (Turtle) breedSet.agents().iterator().next();
+		int varIndex = getVariableIndex(sample, breedSet, upperVarName);
+		if (varIndex == -1) {
+			System.out.println("Variable not found: " + upperVarName);
+			return;
+		}
+	
+		// Build map from who to Turtle
+		Map<Long, Turtle> whoToTurtle = new HashMap<>();
+		for (Agent a : breedSet.agents()) {
+			Turtle t = (Turtle) a;
+			whoToTurtle.put(t.id(), t);
+		}
+	
+		for (int i = 0; i < whoList.length; i++) {
+			Turtle t = whoToTurtle.get((long)whoList[i]);
+			if (t != null) {
+
+				Object finalValue = values[i];
+
+				// If it's a Long or Integer, coerce to Double
+				if (values[i] instanceof Number && !(values[i] instanceof Double)) {
+					finalValue = ((Number) values[i]).doubleValue();
+				}
+
+				t.setVariable(varIndex, finalValue);
+			}
+		}
+	}
+
+	/**
+	 * Sets a variable (by name) for all turtles of a given breed to a single value.
+	 * @throws AgentException 
+	 * @throws LogoException 
+	 */
+	public void setBreedVariable(String breedName, String varName, Object value) throws LogoException, AgentException {
+		AgentSet breedSet = getBreedAgentSet(breedName);
+		if (breedSet == null || breedSet.count() == 0) {
+			System.out.println("No turtles found for breed: " + breedName);
+			return;
+		}
+
+		String upperVarName = varName.toUpperCase();
+		Turtle sample = (Turtle) breedSet.agents().iterator().next();
+		int varIndex = getVariableIndex(sample, breedSet, upperVarName);
+		if (varIndex == -1) {
+			System.out.println("Variable not found: " + upperVarName);
+			return;
+		}
+
+		for (Agent agent : breedSet.agents()) {
+			Turtle t = (Turtle) agent;
+
+			Object finalValue = value;
+
+			// If it's a Long or Integer, coerce to Double
+			if (value instanceof Number && !(value instanceof Double)) {
+				finalValue = ((Number) value).doubleValue();
+			}
+
+			t.setVariable(varIndex, finalValue);
+		}
+	}
+
+
+	private int getVariableIndex(Turtle turtle, AgentSet breedSet, String varName) {		
+		World world = getWorld();
+
+		List<String> turtlesOwn = JavaConverters.seqAsJavaList(world.program().turtlesOwn());
+	
+		int index = turtlesOwn.indexOf(varName);
+		if (index != -1) {
+			return index;
+		}
+	
+		Option<Breed> breedOpt = world.program().breeds().get(breedSet.printName());
+		if (breedOpt.isDefined()) {
+			Breed breed = breedOpt.get();
+			List<String> breedOwn = JavaConverters.seqAsJavaList(breed.owns());
+			int breedIndex = breedOwn.indexOf(varName);
+			if (breedIndex != -1) {
+				return turtlesOwn.size() + breedIndex;
+			}
+		}
+	
+		return -1;  // not found
+	}
+
+	private World getWorld() {
+		if (workspace instanceof HeadlessWorkspace) {
+			return ((HeadlessWorkspace) workspace).world();
+		}
+	
+		if (workspace instanceof App) {
+			return ((App) workspace).workspace().world();
+		}
+	
+		throw new IllegalStateException("Unsupported workspace type: " + workspace.getClass().getName());
+	}
+
+
+
 }
 
  
