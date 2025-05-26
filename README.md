@@ -1,8 +1,9 @@
-## pynetlogo
+# pyNetLogo-extended 
+This is a fork of the original Netlogo to support newer versions of Netlogo and provide additional integrations with the NetLogo API for performance gains.
+This must be built locally and placed in your python project. 
 
-[![Documentation Status](https://readthedocs.org/projects/emaworkbench/badge/?version=latest)](http://pynetlogo.readthedocs.org/en/latest/?badge=master)
-[![PyPi](https://img.shields.io/pypi/v/pynetlogo.svg)](https://pypi.python.org/pypi/pynetlogo)
-[![PyPi](https://img.shields.io/pypi/dm/pynetlogo.svg)](https://pypi.python.org/pypi/pynetlogo)
+# Original ReadMe 
+## pynetlogo
 
 An interface to access [NetLogo](https://ccl.northwestern.edu/netlogo/) from
 Python. The interface offers methods for executing commands and returning
