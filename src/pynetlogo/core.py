@@ -13,6 +13,8 @@ import sys
 import tempfile
 import warnings
 from logging import DEBUG, INFO
+from jpype import JArray, JInt, JDouble, JObject, JPackage, JString
+
 
 __all__ = ["NetLogoLink", "NetLogoException"]
 
@@ -203,11 +205,11 @@ class NetLogoLink:
                 # Build JVM args
                 jvm_args = list(jvmargs) if jvmargs else []
 
-                # Add Java debugging agent
-                jvm_args += [
-                    f"-Djava.class.path={classpath}",
-                    "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005"
-                ]
+                # # Add Java debugging agent
+                # jvm_args += [
+                #     f"-Djava.class.path={classpath}",
+                #     "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005"
+                # ]
 
                 # Start the JVM
                 jpype.startJVM(jvmpath=jvm_path, *jvm_args)
@@ -679,6 +681,17 @@ class NetLogoLink:
                 converted_results.append(self._cast_results(entry))
 
         return converted_results
+    
+    def get_breed_variable_collections(self, breed: str, vars_: list[str]) -> dict[str, list]:
+        j_vars = JArray(JString)(vars_)
+        j_map  = self.link.getBreedVariableCollections(breed.upper(), j_vars)
+        # Convert Java Map to Python dict
+        py_map = {}
+        for entry in j_map.entrySet():
+            key = str(entry.getKey())
+            # each value is a java.util.List
+            py_map[key] = [item for item in entry.getValue()]
+        return py_map
 
 
     def set_breed_variable(self, breed: str, var: str, value):
@@ -694,6 +707,19 @@ class NetLogoLink:
         java_values = JArray(JObject)(value_list)
 
         self.link.setBreedVariableByWho(breed.upper(), var, java_who, java_values)
+
+    def get_patch_variable(self, var_name: str) -> list:
+        java_list = self.link.getPatchVariableValues(JString(var_name))
+        return [v for v in java_list]
+    
+    def set_patch_variable_by_who(self, var_name: str, who_list: list[int], value_list: list):
+        if len(who_list) != len(value_list):
+            raise ValueError("Length of 'who' 'value' lists must match")
+
+        java_who = JArray(JInt)(who_list)
+        java_values = JArray(JObject)(value_list)
+
+        self.link.setPatchVariableByWho(JString(var_name), java_who, java_values)
 
 def type_convert(results):
     """Helper function for converting from Java datatypes to

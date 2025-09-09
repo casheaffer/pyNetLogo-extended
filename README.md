@@ -1,6 +1,7 @@
 # pyNetLogo-extended 
-This is a fork of the original Netlogo to support newer versions of Netlogo and provide additional integrations with the NetLogo API for performance gains.
-This must be built locally and placed in your python project. 
+This is a fork of the original pynetlogo by Jan Kwakkel to support newer versions of Netlogo and provide additional integrations with the NetLogo API for performance gains.
+This must be built locally and placed in your python project. Versioning as been adjusted 
+
 
 # Original ReadMe 
 ## pynetlogo

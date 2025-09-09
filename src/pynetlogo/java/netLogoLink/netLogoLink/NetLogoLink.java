@@ -23,6 +23,8 @@ import org.nlogo.api.LogoException;
 import org.nlogo.api.Turtle;
 import org.nlogo.api.World;
 import org.nlogo.app.App;
+import org.nlogo.agent.Patch;
+
 import java.awt.EventQueue;
 import java.awt.Frame;
 
@@ -346,7 +348,56 @@ public class NetLogoLink {
 	}
 
 
+	/**
+	 * For a given breed and a list of variable names, return a map:
+	 *    varName -> List of values (one per turtle in breed, in iteration order).
+	 *
+	 * Example result:
+	 *   { "energy": [23.5, 17.0, 9.2],
+	 *     "is-fleeing": [false, true, false] }
+	 */
+	public Map<String, List<Object>> getBreedVariableCollections(String breedName,
+																List<String> variableNames) {
 
+		Map<String, List<Object>> outMap = new LinkedHashMap<>();
+
+		// Early exit if breed is missing
+		AgentSet breedSet = getBreedAgentSet(breedName);
+		if (breedSet == null || breedSet.count() == 0) {
+			System.out.println("No turtles found for breed: " + breedName);
+			return outMap;
+		}
+
+		// Build variable-name  index map  (re-use helpers)
+		World world  = getWorld();
+		Program prog = world.program();
+
+		List<String> turtlesOwn = JavaConverters.seqAsJavaList(prog.turtlesOwn());
+		Map<String, Integer> varIndex = new HashMap<>();
+		for (int i = 0; i < turtlesOwn.size(); i++)
+			varIndex.put(turtlesOwn.get(i).toUpperCase(), i);
+
+		Option<Breed> bOpt = prog.breeds().get(breedName.toUpperCase());
+		if (bOpt.isDefined()) {
+			List<String> breedOwn = JavaConverters.seqAsJavaList(bOpt.get().owns());
+			int offset = turtlesOwn.size();
+			for (int j = 0; j < breedOwn.size(); j++)
+				varIndex.put(breedOwn.get(j).toUpperCase(), offset + j);
+		}
+
+		// Initialise output lists
+		for (String v : variableNames) outMap.put(v, new ArrayList<>());
+
+		// Collect values
+		for (Agent a : breedSet.agents()) {
+			Turtle t = (Turtle) a;
+			for (String v : variableNames) {
+				Integer idx = varIndex.get(v.toUpperCase());
+				outMap.get(v).add(idx != null ? t.getVariable(idx) : null);
+			}
+		}
+		return outMap;
+	}
 
 	public void setBreedVariableByWho(String breedName, String varName, int[] whoList, Object[] values) throws LogoException, AgentException {
 		if (whoList.length != values.length) {
@@ -446,6 +497,70 @@ public class NetLogoLink {
 		}
 	
 		return -1;  // not found
+	}
+
+	public List<Object> getPatchVariableValues(String varName) {
+		World world = getWorld();
+		Program program = world.program();
+
+		// Find index of patch variable
+		List<String> patchesOwn = JavaConverters.seqAsJavaList(program.patchesOwn());
+		int varIndex = patchesOwn.indexOf(varName);
+		if (varIndex == -1) {
+			System.out.println("Patch variable not found: " + varName);
+			return new ArrayList<>();
+		}
+
+		List<Object> values = new ArrayList<>();
+		for (Agent a : world.patches().agents()) {
+			Patch p = (Patch) a;
+			values.add(p.getPatchVariable(varIndex));
+		}
+		return values;
+	}
+
+	public void setPatchVariableByWho(String varName, int[] whoList, Object[] values) 
+	{
+		World world = getWorld();
+		Program program = world.program();
+
+		// Find variable index
+		List<String> patchesOwn = JavaConverters.seqAsJavaList(program.patchesOwn());
+		int varIndex = patchesOwn.indexOf(varName.toUpperCase());
+
+		if (varIndex == -1) {
+			System.out.println("Patch variable not found: " + varName.toUpperCase());
+			return;
+		}
+
+		// Ensure length match
+		if (whoList.length != values.length) {
+			throw new IllegalArgumentException("'Who' and 'values' lists must be same length");
+		}
+
+		// Map to who values 
+		Map<Long, Patch> whoToPatch = new HashMap<>();
+		for (Agent a : world.patches().agents()) {
+			Patch p = (Patch) a;
+			whoToPatch.put(p.id(), p);
+		}
+
+		// Actual assignment
+		for (int i = 0; i < whoList.length; i++) {
+			Patch p = whoToPatch.get((long) whoList[i]);
+			if (p != null) {
+				Object val = values[i];
+				// Netlogo uses doubles and we need to handle this abstraction
+				if (val instanceof Number && !(val instanceof Double)) {
+					val = ((Number) val).doubleValue();
+				}
+				try {
+					p.setPatchVariable(varIndex, val);
+				} catch (AgentException e) {
+					e.printStackTrace();
+				}
+			}
+		}
 	}
 
 	private World getWorld() {
