@@ -197,7 +197,7 @@ class NetLogoLink:
             jars.append(os.path.join(PYNETLOGO_HOME, "java", "netlogolink.jar"))
 
             try:
-                #jpype.startJVM(*jvmargs, jvmpath=jvm_path, classpath=jars)
+                jpype.startJVM(*jvmargs, jvmpath=jvm_path, classpath=jars)
 
                 classpath_sep = ";" if os.name == "nt" else ":"
                 classpath = classpath_sep.join(jars)
@@ -212,7 +212,7 @@ class NetLogoLink:
                 # ]
 
                 # Start the JVM
-                jpype.startJVM(jvmpath=jvm_path, *jvm_args)
+                # jpype.startJVM(jvmpath=jvm_path, *jvm_args)
 
             except RuntimeError as e:
                 raise e
